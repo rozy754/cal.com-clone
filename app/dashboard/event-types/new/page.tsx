@@ -19,7 +19,7 @@ export default function NewEventAutoProvisioner() {
         const randomSeed = Math.floor(1000 + Math.random() * 9000);
         
         // 1. Commit a clean default shell entry right into your Prisma Database
-        const newEvent = await eventTypeApi.create({
+        const responseData: any = await eventTypeApi.create({
           title: "Untitled Event",
           slug: `untitled-slot-${randomSeed}`,
           description: "Add a helpful description details block here.",
@@ -28,11 +28,15 @@ export default function NewEventAutoProvisioner() {
           isActive: true,
         });
 
+        // FIXED: Safely unpack the inner target data properties object structure
+        const newEvent = responseData?.data || responseData;
+
         // 2. Safely direct the user into the Workspace Editor matching your [id] route
         if (newEvent && newEvent.id) {
+          console.log("Successfully provisioned new event type slot container entry:", newEvent.id);
           router.replace(`/dashboard/event-types/${newEvent.id}`);
         } else {
-          // Fallback if the payload response structure changes
+          console.warn("Payload verification returned anomalies, dropping back safely.");
           router.push("/dashboard/event-types");
         }
       } catch (error) {

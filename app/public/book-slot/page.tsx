@@ -1,16 +1,26 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
-// PART A: INTERNAL CORE CALENDAR INTERFACE COMPONENT
+// HELPER FUNCTION: CONVERT 24H STRING ("14:30") TO CAL.COM STYLE AM/PM STRING ("2:30pm")
+function formatToAmPm(time24: string): string {
+  const [hStr, mStr] = time24.split(":");
+  const hours = parseInt(hStr, 10);
+  const minutes = parseInt(mStr, 10);
+  
+  const ampm = hours >= 12 ? "pm" : "am";
+  const displayHours = hours % 12 === 0 ? 12 : hours % 12;
+  const displayMinutes = minutes.toString().padStart(2, "0");
+  
+  return `${displayHours}:${displayMinutes}${ampm}`;
+}
+
 function CalendarSlotPickerCoreEngine() {
-  const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const eventSlug = params?.eventSlug as string;
-  // Safely extract the username parameter from the query string
+  const eventSlug = searchParams.get("event") || "";
   const username = searchParams.get("user") || "rozy-koranga-forwy0";
 
   const [isLoading, setIsLoading] = useState(true);
@@ -19,11 +29,12 @@ function CalendarSlotPickerCoreEngine() {
   
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateString, setSelectedDateString] = useState<string | null>(null);
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [allPossibleSlots, setAllPossibleSlots] = useState<{ time: string; displayRange: string; isAvailable: boolean }[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadBookingCalendarSpecs() {
+      if (!eventSlug) return;
       try {
         const eventRes = await fetch("/api/event-type");
         if (!eventRes.ok) throw new Error("Failed fetching events stream");
@@ -45,7 +56,7 @@ function CalendarSlotPickerCoreEngine() {
           }
         }
       } catch (err) {
-        console.error("Failed loading data matrix layers:", err);
+        console.error("Failed loading data layers:", err);
       } finally {
         setIsLoading(false);
       }
@@ -56,7 +67,7 @@ function CalendarSlotPickerCoreEngine() {
   const checkDateAvailabilityStatus = (date: Date) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    if (date < today) return { isAvailable: false, reason: "past" };
+    if (date < today) return { isAvailable: false };
 
     const dateString = date.toISOString().split("T")[0];
     const overrides = scheduleData?.date_overrides || [];
@@ -72,13 +83,9 @@ function CalendarSlotPickerCoreEngine() {
     return { isAvailable: hasWeeklySlot, isOverride: false, overrideData: null };
   };
 
+  // GENERATE SLOTS WITH REFINED START-END AM/PM MATRIX CHECK
   const generateSlotsForDate = (date: Date) => {
     const status = checkDateAvailabilityStatus(date);
-    if (!status.isAvailable) {
-      setAvailableSlots([]);
-      return;
-    }
-
     let startStr = "09:00";
     let endStr = "17:00";
 
@@ -98,7 +105,7 @@ function CalendarSlotPickerCoreEngine() {
     const [startH, startM] = startStr.split(":").map(Number);
     const [endH, endM] = endStr.split(":").map(Number);
     
-    const slotsArray: string[] = [];
+    const slotsArray: { time: string; displayRange: string; isAvailable: boolean }[] = [];
     const stepDuration = eventData?.duration || 30;
     const bufferTime = eventData?.bufferTime || 0;
     const totalStep = stepDuration + bufferTime;
@@ -111,24 +118,37 @@ function CalendarSlotPickerCoreEngine() {
     const minNoticeMinutes = eventData?.minNoticePeriod || 120;
 
     while (currentMinutes + stepDuration <= endMinutes) {
-      const h = Math.floor(currentMinutes / 60);
-      const m = currentMinutes % 60;
-      const formattedSlotTime = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+      const startHSlot = Math.floor(currentMinutes / 60);
+      const startMSlot = currentMinutes % 60;
       
+      const endTotalMinutes = currentMinutes + stepDuration;
+      const endHSlot = Math.floor(endTotalMinutes / 60);
+      const endMSlot = endTotalMinutes % 60;
+
+      const time24Start = `${startHSlot.toString().padStart(2, "0")}:${startMSlot.toString().padStart(2, "0")}`;
+      const time24End = `${endHSlot.toString().padStart(2, "0")}:${endMSlot.toString().padStart(2, "0")}`;
+      
+      const displayRangeString = `${formatToAmPm(time24Start)} - ${formatToAmPm(time24End)}`;
+
+      // Notice period check condition
+      let isSlotValid = true;
       if (isTodaySelected) {
-        const slotTotalMinutesFromMidnight = h * 60 + m;
         const currentTotalMinutesFromMidnight = now.getHours() * 60 + now.getMinutes();
-        if (slotTotalMinutesFromMidnight < currentTotalMinutesFromMidnight + minNoticeMinutes) {
-          currentMinutes += totalStep;
-          continue;
+        if (currentMinutes < currentTotalMinutesFromMidnight + minNoticeMinutes) {
+          isSlotValid = false; // Banned based on notice parameters rules
         }
       }
 
-      slotsArray.push(formattedSlotTime);
+      slotsArray.push({
+        time: time24Start,
+        displayRange: displayRangeString,
+        isAvailable: isSlotValid && status.isAvailable, // False triggers the dark-grey state
+      });
+
       currentMinutes += totalStep;
     }
 
-    setAvailableSlots(slotsArray);
+    setAllPossibleSlots(slotsArray);
   };
 
   const getDaysInMonthGrid = () => {
@@ -154,19 +174,11 @@ function CalendarSlotPickerCoreEngine() {
     generateSlotsForDate(date);
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#0b0b0c] flex items-center justify-center text-xs text-zinc-500 font-mono">
-        Loading scheduler calendar grids metrics...
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#0b0b0c] text-[#f4f4f5] px-4 py-16 flex items-center justify-center antialiased">
-      <div className="w-full max-w-[860px] bg-[#141416] border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 min-h-[480px]">
+      <div className="w-full max-w-[900px] bg-[#141416] border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 min-h-[500px]">
         
-        {/* LEFT COMPONENT COLUMN AREA */}
+        {/* LEFT COMPONENT DETAILS AREA */}
         <div className="md:col-span-3 p-6 border-b md:border-b-0 md:border-r border-zinc-800/70 space-y-4 select-none">
           <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 uppercase">
             {username.charAt(0)}
@@ -175,14 +187,13 @@ function CalendarSlotPickerCoreEngine() {
             <p className="text-xs text-zinc-400 font-medium capitalize">{username.replace(/-/g, " ")}</p>
             <h2 className="text-base font-bold text-white tracking-tight">{eventData?.title}</h2>
           </div>
-          <div className="space-y-2 text-zinc-400 text-xs font-light">
+          <div className="space-y-2.5 text-zinc-400 text-xs font-light">
             <div className="flex items-center space-x-2"><span>⏱️</span><span className="font-mono">{eventData?.duration} minutes</span></div>
             <div className="flex items-center space-x-2"><span>📹</span><span>{eventData?.location || "Google Meet"}</span></div>
-            <div className="flex items-center space-x-2"><span>🌐</span><span>{scheduleData?.timeZone || "Asia/Kolkata"}</span></div>
           </div>
         </div>
 
-        {/* MIDDLE CALENDAR GRID SYSTEM INTERFACE */}
+        {/* MIDDLE CALENDAR GRID ENGINE */}
         <div className="md:col-span-5 p-6 border-b md:border-b-0 md:border-r border-zinc-800/70 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-4 select-none">
@@ -227,28 +238,37 @@ function CalendarSlotPickerCoreEngine() {
           <button onClick={() => router.push(`/public/${username}`)} className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors w-fit pt-4 cursor-pointer">← Back to listing</button>
         </div>
 
-        {/* RIGHT SIDE HOURLY TRACK PILLS ARRAY PANEL */}
-        <div className="md:col-span-4 p-6 bg-[#0b0b0c]/40 flex flex-col justify-start overflow-y-auto max-h-[500px]">
+        {/* RIGHT SIDEBAR: FULLY CUSTOMIZED HOURLY TRACK PILLS */}
+        <div className="md:col-span-4 p-6 bg-[#0b0b0c]/40 flex flex-col justify-start overflow-y-auto max-h-[520px]">
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4 select-none">
             {selectedDateString ? `Available Slots` : "Select a Date"}
           </h3>
           <div className="space-y-2 flex-1 overflow-y-auto pr-1">
-            {selectedDateString && availableSlots.map((slot) => {
-              const isSlotChosen = selectedSlot === slot;
+            {selectedDateString && allPossibleSlots.map((item) => {
+              const isSlotChosen = selectedSlot === item.time;
+              
               return (
-                <div key={slot} className="flex items-center space-x-1.5 animate-in fade-in slide-in-from-bottom-1 duration-150">
+                <div key={item.time} className="flex items-center space-x-1.5 animate-in fade-in slide-in-from-bottom-1 duration-150">
                   <button
-                    onClick={() => setSelectedSlot(slot)}
-                    className={`flex-1 text-center font-mono text-xs py-2.5 rounded-xl border transition-all focus:outline-none ${
-                      isSlotChosen ? "bg-zinc-800 text-zinc-400 border-zinc-700 line-through font-medium" : "bg-[#141416] text-white border-zinc-800/80 hover:border-zinc-500 cursor-pointer"
+                    disabled={!item.isAvailable}
+                    onClick={() => setSelectedSlot(item.time)}
+                    className={`flex-1 text-center font-medium text-xs py-2.5 rounded-xl border transition-all focus:outline-none ${
+                      isSlotChosen
+                        ? "bg-zinc-800 text-zinc-400 border-zinc-700 shadow-inner"
+                        : item.isAvailable
+                        ? "bg-[#141416] text-white border-zinc-800 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer"
+                        : "bg-zinc-900/40 text-zinc-600 border-zinc-900/60 opacity-45 cursor-not-allowed select-none" // EXACT DARK GREY STYLE
                     }`}
                   >
-                    {slot}
+                    {/* Green active Dot indicator like Cal.com if slot is open */}
+                    {item.isAvailable && !isSlotChosen && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2 animate-pulse" />}
+                    {item.displayRange}
                   </button>
+                  
                   {isSlotChosen && (
                     <button
-                      onClick={() => router.push(`/public/booking/${eventSlug}/book?date=${selectedDateString}&time=${slot}&user=${username}`)}
-                      className="bg-white text-black font-semibold text-xs px-3.5 py-2.5 rounded-xl hover:bg-zinc-200 cursor-pointer animate-in zoom-in-95 duration-150 shrink-0"
+                      onClick={() => router.push(`/public/book-slot/confirm?event=${eventSlug}&date=${selectedDateString}&time=${item.time}&user=${username}`)}
+                      className="bg-white text-black font-semibold text-xs px-3.5 py-2.5 rounded-xl hover:bg-zinc-200 cursor-pointer animate-in fade-in zoom-in-95 duration-150 shrink-0"
                     >
                       Next
                     </button>
@@ -256,10 +276,11 @@ function CalendarSlotPickerCoreEngine() {
                 </div>
               );
             })}
+
             {!selectedDateString && (
-              <div className="h-full flex flex-col items-center justify-center text-center text-zinc-600 text-xs font-light py-12 select-none">
+              <div className="h-full flex flex-col items-center justify-center text-center text-zinc-600 text-xs font-light py-14 select-none">
                 <span>📅</span>
-                <p className="mt-1.5 leading-relaxed">Choose an open active calendar day from the grid view loop map to view corresponding time intervals.</p>
+                <p className="mt-1.5 leading-relaxed">Choose an open active day to reveal corresponding am/pm timeline slots matrix ranges.</p>
               </div>
             )}
           </div>
@@ -270,14 +291,9 @@ function CalendarSlotPickerCoreEngine() {
   );
 }
 
-// PART B: MASTER EXPORT WRAPPED IN STABLE SUSPENSE LAYER
 export default function PublicEventCalendarSlotPicker() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-[#0b0b0c] flex items-center justify-center text-xs text-zinc-500 animate-pulse font-medium">
-        Initializing dynamic secure calendar layers...
-      </div>
-    }>
+    <Suspense fallback={<div className="min-h-screen bg-[#0b0b0c] flex items-center justify-center text-xs text-zinc-500 font-medium">Loading layout...</div>}>
       <CalendarSlotPickerCoreEngine />
     </Suspense>
   );

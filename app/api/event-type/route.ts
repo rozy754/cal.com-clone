@@ -19,7 +19,7 @@ export async function GET() {
   }
 }
 
-// 2. POST: NextRequest wrapper formats for strict method detection
+// 2. POST: Create a new event type
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -43,21 +43,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // If scheduleId is not provided, use the default schedule
+    // FIXED: Only search databases if frontend did NOT provide a specific scheduleId
     let finalScheduleId = scheduleId;
+    
     if (!finalScheduleId) {
       const defaultSchedule = await prisma.schedule.findFirst({
         where: { isDefault: true }
       });
 
-      if (!defaultSchedule) {
-        return NextResponse.json(
-          { success: false, error: "No default schedule found. Please create a schedule first." },
-          { status: 400 }
-        );
+      if (defaultSchedule) {
+        finalScheduleId = defaultSchedule.id;
+      } else {
+        // Agar koi explicit default marked nahi hai, toh database ka pehla available schedule le lo
+        const fallbackSchedule = await prisma.schedule.findFirst();
+        if (fallbackSchedule) {
+          finalScheduleId = fallbackSchedule.id;
+        } else {
+          // Agar pure database mein ek bhi schedule nahi hai, tabhi sirf yeh response jaye
+          return NextResponse.json(
+            { success: false, error: "Please create at least one availability schedule in your dashboard first!" },
+            { status: 400 }
+          );
+        }
       }
-
-      finalScheduleId = defaultSchedule.id;
     }
 
     // Check if slug is taken
