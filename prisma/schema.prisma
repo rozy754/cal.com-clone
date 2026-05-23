@@ -1,0 +1,105 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+// 1. DUMMY USER MODEL (To satisfy constraints & single-user admin panel)
+model User {
+  id        String     @id @default(uuid())
+  name      String     @default("Default Admin")
+  email     String     @unique @default("admin@cal.com")
+  createdAt DateTime   @default(now())
+  schedules Schedule[]
+}
+
+// 2. EVENT TYPE MODEL (Core Feature #1 + Bonus Features)
+model EventType {
+  id              String    @id @default(uuid())
+  title           String
+  slug            String    @unique // Public URL identity (e.g., /30-min)
+  description     String?
+  location        String    @default("Google Meet") // Handled with custom default state
+  duration        Int       // In minutes
+  isActive        Boolean   @default(true)
+  minNoticePeriod Int       @default(120) // In minutes
+  bufferTime      Int       @default(0)   // Buffer space (Bonus Feature)
+  customQuestions Json?     // Configuration matrix for forms (Bonus Feature)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relationship pointers
+  scheduleId      String
+  schedule        Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  bookings        Booking[]
+}
+
+// 3. MASTER SCHEDULE MODEL (Core Feature #2 + Multiple Schedules Handling)
+model Schedule {
+  id             String         @id @default(uuid())
+  name           String         // e.g., "Working Hours" or "new vala schedule"
+  timeZone       String         @default("Asia/Kolkata")
+  isDefault      Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  // Relationship pointers
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Clean Inverse Relations Mapping Shortcuts
+  eventTypes     EventType[]
+  weekly_slots   Availability[] // 👈 Clean singular entity collection target
+  date_overrides DateOverride[] // 👈 Clean dynamic exclusions mapping context
+}
+
+// 4. WEEKLY AVAILABILITY MODEL (Standard Recurring Slot Matrix)
+model Availability {
+  id         String   @id @default(uuid())
+  dayOfWeek  Int      // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  startTime  String   // HH:MM (e.g., "09:00")
+  endTime    String   // HH:MM (e.g., "17:00")
+
+  // Relationship pointers
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+}
+
+// 5. DATE OVERRIDE MODEL (Bonus Feature - Calendar Popup Blockouts)
+model DateOverride {
+  id         String   @id @default(uuid())
+  date       DateTime // Concrete calendar day grid
+  isBlocked  Boolean  @default(false)
+  startTime  String?  // Nullable if isBlocked is true
+  endTime    String?  // Nullable if isBlocked is true
+
+  // Relationship pointers
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+}
+
+// 6. BOOKING MODEL (Core Operations Panel tracking context)
+model Booking {
+  id               String        @id @default(uuid())
+  bookerName       String
+  bookerEmail      String
+  startTime        DateTime      // Strict UTC master timestamp
+  endTime          DateTime      // Strict UTC master timestamp
+  status           BookingStatus @default(UPCOMING)
+  cancellationNote String?
+  customResponses  Json?         // Key-value pairs capturing customQuestions data
+  createdAt        DateTime      @default(now())
+
+  // Relationship pointers
+  eventTypeId      String
+  eventType        EventType     @relation(fields: [eventTypeId], references: [id], onDelete: Cascade)
+}
+
+enum BookingStatus {
+  UPCOMING
+  CANCELLED
+  RESCHEDULED
+}
