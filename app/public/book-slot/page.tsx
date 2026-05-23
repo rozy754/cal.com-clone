@@ -83,7 +83,6 @@ function CalendarSlotPickerCoreEngine() {
     return { isAvailable: hasWeeklySlot, isOverride: false, overrideData: null };
   };
 
-  // GENERATE SLOTS WITH REFINED START-END AM/PM MATRIX CHECK
   const generateSlotsForDate = (date: Date) => {
     const status = checkDateAvailabilityStatus(date);
     let startStr = "09:00";
@@ -130,19 +129,18 @@ function CalendarSlotPickerCoreEngine() {
       
       const displayRangeString = `${formatToAmPm(time24Start)} - ${formatToAmPm(time24End)}`;
 
-      // Notice period check condition
       let isSlotValid = true;
       if (isTodaySelected) {
         const currentTotalMinutesFromMidnight = now.getHours() * 60 + now.getMinutes();
         if (currentMinutes < currentTotalMinutesFromMidnight + minNoticeMinutes) {
-          isSlotValid = false; // Banned based on notice parameters rules
+          isSlotValid = false;
         }
       }
 
       slotsArray.push({
         time: time24Start,
         displayRange: displayRangeString,
-        isAvailable: isSlotValid && status.isAvailable, // False triggers the dark-grey state
+        isAvailable: isSlotValid && status.isAvailable,
       });
 
       currentMinutes += totalStep;
@@ -174,11 +172,33 @@ function CalendarSlotPickerCoreEngine() {
     generateSlotsForDate(date);
   };
 
+  // ✅ NEW INTERACTION CONTEXT: AUTOMATED STRINGS COMPILATION PIPELINE FOR ROUTING
+  const executeNextStepTransition = (pickedTime24: string) => {
+    if (!selectedDateString || !eventData) return;
+
+    // 1. Compile pure backend global standard ISO strings
+    const startISO = new Date(`${selectedDateString}T${pickedTime24}:00`).toISOString();
+    const meetingDuration = eventData.duration || 30;
+    const endISO = new Date(new Date(`${selectedDateString}T${pickedTime24}:00`).getTime() + meetingDuration * 60000).toISOString();
+
+    // 2. Multi-parameter routing linking to your form view exactly
+    router.push(
+      `/public/book-slot/confirm?` +
+      `event=${encodeURIComponent(eventSlug)}&` +
+      `user=${encodeURIComponent(username)}&` +
+      `eventTypeId=${encodeURIComponent(eventData.id)}&` +
+      `startTime=${encodeURIComponent(startISO)}&` +
+      `endTime=${encodeURIComponent(endISO)}&` +
+      `date=${selectedDateString}&` +
+      `time=${pickedTime24}`
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#0b0b0c] text-[#f4f4f5] px-4 py-16 flex items-center justify-center antialiased">
       <div className="w-full max-w-[900px] bg-[#141416] border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden grid grid-cols-1 md:grid-cols-12 min-h-[500px]">
         
-        {/* LEFT COMPONENT DETAILS AREA */}
+        {/* LEFT DETAILS COLUMN */}
         <div className="md:col-span-3 p-6 border-b md:border-b-0 md:border-r border-zinc-800/70 space-y-4 select-none">
           <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400 uppercase">
             {username.charAt(0)}
@@ -193,7 +213,7 @@ function CalendarSlotPickerCoreEngine() {
           </div>
         </div>
 
-        {/* MIDDLE CALENDAR GRID ENGINE */}
+        {/* MIDDLE CALENDAR ENGINE */}
         <div className="md:col-span-5 p-6 border-b md:border-b-0 md:border-r border-zinc-800/70 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-4 select-none">
@@ -238,7 +258,7 @@ function CalendarSlotPickerCoreEngine() {
           <button onClick={() => router.push(`/public/${username}`)} className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors w-fit pt-4 cursor-pointer">← Back to listing</button>
         </div>
 
-        {/* RIGHT SIDEBAR: FULLY CUSTOMIZED HOURLY TRACK PILLS */}
+        {/* RIGHT SIDEBAR: TIMELINE GRID PILLS */}
         <div className="md:col-span-4 p-6 bg-[#0b0b0c]/40 flex flex-col justify-start overflow-y-auto max-h-[520px]">
           <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4 select-none">
             {selectedDateString ? `Available Slots` : "Select a Date"}
@@ -257,17 +277,17 @@ function CalendarSlotPickerCoreEngine() {
                         ? "bg-zinc-800 text-zinc-400 border-zinc-700 shadow-inner"
                         : item.isAvailable
                         ? "bg-[#141416] text-white border-zinc-800 hover:border-zinc-500 hover:text-zinc-200 cursor-pointer"
-                        : "bg-zinc-900/40 text-zinc-600 border-zinc-900/60 opacity-45 cursor-not-allowed select-none" // EXACT DARK GREY STYLE
+                        : "bg-zinc-900/40 text-zinc-600 border-zinc-900/60 opacity-45 cursor-not-allowed select-none"
                     }`}
                   >
-                    {/* Green active Dot indicator like Cal.com if slot is open */}
                     {item.isAvailable && !isSlotChosen && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2 animate-pulse" />}
                     {item.displayRange}
                   </button>
                   
+                  {/* ✅ FIXED NEXT ACTION: Direct hook linking dynamic ISO strings forwarding to your confirm view handler */}
                   {isSlotChosen && (
                     <button
-                      onClick={() => router.push(`/public/book-slot/confirm?event=${eventSlug}&date=${selectedDateString}&time=${item.time}&user=${username}`)}
+                      onClick={() => executeNextStepTransition(item.time)}
                       className="bg-white text-black font-semibold text-xs px-3.5 py-2.5 rounded-xl hover:bg-zinc-200 cursor-pointer animate-in fade-in zoom-in-95 duration-150 shrink-0"
                     >
                       Next
