@@ -46,7 +46,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     }
 
     // 2. Perform safe relational updates inside a clean transaction block
-    const updated = await prisma.$transaction(async (tx) => {
+   const updated = await prisma.$transaction(async (tx: any) => {
       // Update schedule metadata
       await tx.schedule.update({
         where: { id },
