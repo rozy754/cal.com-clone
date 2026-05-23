@@ -13,8 +13,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const schedule = await prisma.schedule.findUnique({
       where: { id },
       include: {
-        weekly_slots: true,   // 👈 EXACT MATCH WITH YOUR PRISMA LOGS
-        date_overrides: true, // 👈 EXACT MATCH WITH YOUR PRISMA LOGS
+        weekly_slots: true,   // Exact sync with your Prisma relations mapping
+        date_overrides: true, // Exact sync with your Prisma relations mapping
         eventTypes: true,    
         user: true,          
       },
@@ -35,7 +35,9 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await req.json();
-    const { name, timeZone, isDefault, availabilities, overrides } = body;
+    
+    // 1. FIXED: Destructuring parameters mapping exactly what frontend transmits
+    const { name, timeZone, isDefault, weekly_slots, date_overrides } = body;
 
     // Check if the target schedule exists
     const existing = await prisma.schedule.findUnique({ where: { id } });
@@ -43,49 +45,64 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ success: false, error: "Schedule not found" }, { status: 404 });
     }
 
+    // 2. Perform safe relational updates inside a clean transaction block
     const updated = await prisma.$transaction(async (tx) => {
       // Update schedule metadata
-      const main = await tx.schedule.update({
+      await tx.schedule.update({
         where: { id },
         data: {
           name,
-          timeZone,
+          timeZone: timeZone || "Asia/Kolkata",
           isDefault: isDefault ?? false,
         },
       });
 
-      // Update availability slots if provided
-      if (availabilities) {
+      // FIXED: Safely cascade delete & re-create weekly slots if present in request body
+      if (weekly_slots) {
         await tx.availability.deleteMany({ where: { scheduleId: id } });
-        await tx.availability.createMany({
-          data: availabilities.map((slot: any) => ({
-            dayOfWeek: Number(slot.dayOfWeek),
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            scheduleId: id,
-          })),
-        });
+        if (weekly_slots.length > 0) {
+          await tx.availability.createMany({
+            data: weekly_slots.map((slot: any) => ({
+              dayOfWeek: Number(slot.dayOfWeek),
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              scheduleId: id,
+            })),
+          });
+        }
       }
 
-      // Update date overrides if provided
-      if (overrides) {
+      // FIXED: Safely cascade delete & re-create date overrides if present in request body
+      if (date_overrides) {
         await tx.dateOverride.deleteMany({ where: { scheduleId: id } });
-        await tx.dateOverride.createMany({
-          data: overrides.map((ov: any) => ({
-            date: new Date(ov.date),
-            isBlocked: ov.isBlocked ?? false,
-            startTime: ov.isBlocked ? null : ov.startTime,
-            endTime: ov.isBlocked ? null : ov.endTime,
-            scheduleId: id,
-          })),
-        });
+        if (date_overrides.length > 0) {
+          await tx.dateOverride.createMany({
+            data: date_overrides.map((ov: any) => ({
+              date: new Date(ov.date),
+              isBlocked: ov.isBlocked ?? false,
+              startTime: ov.isBlocked ? null : ov.startTime,
+              endTime: ov.isBlocked ? null : ov.endTime,
+              scheduleId: id,
+            })),
+          });
+        }
       }
 
-      return main;
+      // 3. FIXED: Fetch fully updated record snapshot including fresh child models relation array tracks
+      const comprehensiveSnapshot = await tx.schedule.findUnique({
+        where: { id },
+        include: {
+          weekly_slots: true,
+          date_overrides: true,
+        }
+      });
+
+      return comprehensiveSnapshot;
     });
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
+    console.error("Failed transaction commit on availability update:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

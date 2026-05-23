@@ -85,7 +85,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* BOTTOM SECTION: SECURELY ANCHORED AT THE BOTTOM */}
         <div className="space-y-[2px] border-t border-[#141416] pt-3">
           <Link 
-            href="/rozy-koranga-forwy0" 
+            href="/public/rozy-koranga-forwy0" 
             target="_blank"
             className="flex items-center space-x-3 px-2.5 py-1.5 text-sm font-medium text-[#8a8a93] hover:text-white rounded-md hover:bg-[#141416] transition-all"
           >

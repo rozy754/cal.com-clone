@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 
+// Dynamic relational structure configurations
 interface BookingQuestion {
   id: string;
   label: string;
@@ -11,6 +12,16 @@ interface BookingQuestion {
   hidden: boolean;
   isDefault?: boolean;
 }
+
+const MAP_INT_TO_DAY_NAME: { [key: number]: string } = {
+  0: "Sunday",
+  1: "Monday",
+  2: "Tuesday",
+  3: "Wednesday",
+  4: "Thursday",
+  5: "Friday",
+  6: "Saturday",
+};
 
 export default function EventEventTypeEditorWorkspace() {
   const router = useRouter();
@@ -27,7 +38,10 @@ export default function EventEventTypeEditorWorkspace() {
   const [slug, setSlug] = useState("");
   const [duration, setDuration] = useState(30);
   const [location, setLocation] = useState("Cal Video (Default)");
-  const [selectedSchedule, setSelectedSchedule] = useState("Working hours");
+  
+  // 1. GENUINE SCHEDULES TRACKING STATE HOOKS (Added for DB Integration)
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState("");
 
   // Booking Questions Master Layout State
   const [customQuestions, setCustomQuestions] = useState<BookingQuestion[]>([
@@ -41,11 +55,20 @@ export default function EventEventTypeEditorWorkspace() {
   const [editType, setEditType] = useState("text");
   const [editRequired, setEditRequired] = useState(false);
 
-  // FETCH TARGET ENTRY PARAMS OUT OF DATABASE
+  // FETCH TARGET EVENT DETAILS + FETCH GENUINE SCHEDULES ON MOUNT
   useEffect(() => {
-    async function fetchEvent() {
+    async function initWorkspaceData() {
       if (!eventId) return;
       try {
+        // Step A: Fetch all genuine schedules from database first
+        const scheduleResponse = await fetch("/api/availability");
+        if (scheduleResponse.ok) {
+          const rawSchedules = await scheduleResponse.json();
+          const extractedSchedules = Array.isArray(rawSchedules) ? rawSchedules : rawSchedules?.data || rawSchedules?.schedules || [];
+          setSchedules(extractedSchedules);
+        }
+
+        // Step B: Fetch the specific Event Type details
         const response = await fetch(`/api/event-type/${eventId}`);
         if (response.ok) {
           const result = await response.json();
@@ -56,21 +79,26 @@ export default function EventEventTypeEditorWorkspace() {
           setSlug(event.slug || "");
           setDuration(event.duration || 30);
           setLocation(event.location || "Cal Video (Default)");
+          setSelectedScheduleId(event.scheduleId || ""); // Track initial bound scheduleId
           
           if (event.customQuestions && Object.keys(event.customQuestions).length > 0) {
             setCustomQuestions(event.customQuestions);
           }
         }
       } catch (error) {
-        console.error("Failed to map dynamic values out of database configurations:", error);
+        console.error("Failed initializing editor data tracks sync:", error);
       } finally {
         setIsLoading(false);
       }
     }
-    fetchEvent();
+    initWorkspaceData();
   }, [eventId]);
 
-  // VISIBILITY DYNAMIC TOGGLE INTERCEPTOR
+  // LIVE PREVIEW CALCULATION ENGINE
+  // Dynamic schedule mapping block: Matches chosen drop dropdown id to render slots list live!
+  const currentActivePreviewSchedule = schedules.find((s) => s.id === selectedScheduleId);
+  const weeklySlotsPreviewArray = currentActivePreviewSchedule?.weekly_slots || [];
+
   const toggleQuestionHidden = (id: string) => {
     if (id === "name" || id === "email") return;
     setCustomQuestions(
@@ -78,13 +106,11 @@ export default function EventEventTypeEditorWorkspace() {
     );
   };
 
-  // INLINE DELETE (DUSTBIN) INTERCEPTOR FOR NEW CUSTOM ENTRIES
   const deleteQuestionField = (id: string) => {
     if (id === "name" || id === "email") return;
     setCustomQuestions(customQuestions.filter((q) => q.id !== id));
   };
 
-  // OPEN EDIT MODAL HOOK
   const openEditModal = (question: BookingQuestion) => {
     setEditingQuestion(question);
     setEditLabel(question.label);
@@ -92,7 +118,6 @@ export default function EventEventTypeEditorWorkspace() {
     setEditRequired(question.required);
   };
 
-  // SAVE FIELD EDIT ALTERATIONS BACK TO ARRAY
   const saveQuestionEdits = () => {
     if (!editingQuestion) return;
     setCustomQuestions(
@@ -110,7 +135,6 @@ export default function EventEventTypeEditorWorkspace() {
     setEditingQuestion(null);
   };
 
-  // ADD BRAND NEW CUSTOM FIELD INJECTOR BUTTON
   const addNewQuestionField = () => {
     const uniqueId = `custom-field-${Date.now()}`;
     const newField: BookingQuestion = {
@@ -124,7 +148,7 @@ export default function EventEventTypeEditorWorkspace() {
     setCustomQuestions([...customQuestions, newField]);
   };
 
-  // COMMITTING COMPLETE WORKSPACE RE-SAVE TRANSACTION
+  // COMMITTING COMPLETE WORKSPACE RE-SAVE TRANSACTION (WITH SCHEDULE ID BINDING)
   const handleSaveWorkspace = async () => {
     if (!eventId) return;
     setIsSaving(true);
@@ -139,6 +163,7 @@ export default function EventEventTypeEditorWorkspace() {
           duration: Number(duration),
           location,
           customQuestions, 
+          scheduleId: selectedScheduleId, // 👈 GENUINE BINDING: Saves selected dropdown choice straight to database model field!
         }),
       });
 
@@ -147,7 +172,7 @@ export default function EventEventTypeEditorWorkspace() {
         router.refresh();
       }
     } catch (error) {
-      console.error("Failed executing update patch database transactional operations:", error);
+      console.error("Failed executing event save transactional operation:", error);
     } finally {
       setIsSaving(false);
     }
@@ -204,7 +229,9 @@ export default function EventEventTypeEditorWorkspace() {
               activeTab === "schedule" ? "bg-[#1c1c1f] text-white font-semibold" : "text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200"
             }`}
           >
-            Availability <div className="text-[10px] font-light text-zinc-500 mt-0.5">{selectedSchedule}</div>
+            Availability <div className="text-[10px] font-light text-zinc-500 mt-0.5">
+              {currentActivePreviewSchedule?.name || "Select Schedule"}
+            </div>
           </button>
           <button
             onClick={() => setActiveTab("advanced")}
@@ -278,43 +305,52 @@ export default function EventEventTypeEditorWorkspace() {
             </div>
           )}
 
-          {/* TAB 2: SCHEDULE */}
+          {/* TAB 2: SCHEDULE (Retrieved and bound to genuine backend tables) */}
           {activeTab === "schedule" && (
             <div className="space-y-6">
               <div>
-                <label className="block text-[11px] font-medium text-zinc-400 uppercase tracking-wider mb-2">Active Target Schedule</label>
+                <label className="block text-[11px] font-medium text-zinc-400 uppercase tracking-wider mb-2">
+                  Active Target Schedule
+                </label>
+                
+                {/* DYNAMIC RETRIEVED SELECT DROPDOWN ROW */}
                 <select
-                  value={selectedSchedule}
-                  onChange={(e) => setSelectedSchedule(e.target.value)}
-                  className="w-full bg-[#0b0b0c] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-zinc-700 transition-colors"
+                  value={selectedScheduleId}
+                  onChange={(e) => setSelectedScheduleId(e.target.value)}
+                  className="w-full bg-[#0b0b0c] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-zinc-700 transition-colors cursor-pointer"
                 >
-                  <option>Working hours</option>
-                  <option>new vala schedule</option>
-                  <option>weekend schedule</option>
+                  <option value="" disabled>-- Select a Genuine Schedule --</option>
+                  {schedules.map((sch) => (
+                    <option key={sch.id} value={sch.id}>
+                      {sch.name} ({sch.timeZone || "Asia/Kolkata"})
+                    </option>
+                  ))}
                 </select>
               </div>
 
+              {/* LIVE TIME PREVIEW MATRIX */}
               <div className="border-t border-zinc-800/80 pt-4 space-y-3">
-                <h4 className="text-[11px] font-semibold uppercase text-zinc-400 tracking-wider mb-2">Timeline Schedule Preview</h4>
-                {[
-                  { day: "Monday", slots: "9:00 AM - 5:00 PM" },
-                  { day: "Tuesday", slots: "9:00 AM - 5:00 PM" },
-                  { day: "Wednesday", slots: "9:00 AM - 5:00 PM" },
-                  { day: "Thursday", slots: "9:00 AM - 5:00 PM" },
-                  { day: "Friday", slots: "9:00 AM - 5:00 PM" },
-                  { day: "Saturday", slots: "Unavailable" },
-                  { day: "Sunday", slots: "Unavailable" },
-                ].map((item, index) => (
-                  <div key={index} className="flex justify-between items-center text-xs border-b border-zinc-900/40 pb-2">
-                    <span className="font-medium text-zinc-300">{item.day}</span>
-                    <span className={item.slots === "Unavailable" ? "text-zinc-600 font-light" : "text-white font-mono"}>{item.slots}</span>
-                  </div>
-                ))}
+                <h4 className="text-[11px] font-semibold uppercase text-zinc-400 tracking-wider mb-2">
+                  Timeline Schedule Preview ({currentActivePreviewSchedule?.name || "No Schedule Chosen"})
+                </h4>
+                
+                {/* Dynamically loops integers from 0 to 6 based on database array availability rows */}
+                {[1, 2, 3, 4, 5, 6, 0].map((dayInt) => {
+                  const activeSlot = weeklySlotsPreviewArray.find((slot: any) => slot.dayOfWeek === dayInt);
+                  return (
+                    <div key={dayInt} className="flex justify-between items-center text-xs border-b border-zinc-900/40 pb-2">
+                      <span className="font-medium text-zinc-300">{MAP_INT_TO_DAY_NAME[dayInt]}</span>
+                      <span className={!activeSlot ? "text-zinc-600 font-light italic" : "text-white font-mono font-medium"}>
+                        {activeSlot ? `${activeSlot.startTime} - ${activeSlot.endTime}` : "Unavailable"}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* TAB 3: ADVANCED CAL.COM BOOKING QUESTIONS VIEW */}
+          {/* TAB 3: ADVANCED */}
           {activeTab === "advanced" && (
             <div className="space-y-5">
               <div>
@@ -324,7 +360,6 @@ export default function EventEventTypeEditorWorkspace() {
                 </p>
               </div>
 
-              {/* QUESTIONS COMPONENT STACK CONTAINER */}
               <div className="border border-zinc-800 rounded-xl bg-[#0b0b0c] overflow-hidden divide-y divide-zinc-800/80 shadow-inner">
                 {customQuestions.map((q) => {
                   const isCore = q.id === "name" || q.id === "email";
@@ -338,30 +373,15 @@ export default function EventEventTypeEditorWorkspace() {
                       <div className="space-y-1 pr-4">
                         <div className="flex items-center space-x-2">
                           <span className="text-xs font-medium text-white">{q.label}</span>
-                          
-                          {/* Badges layout block */}
-                          {q.required && (
-                            <span className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-light">
-                              Required
-                            </span>
-                          )}
-                          {q.hidden && (
-                            <span className="text-[10px] bg-red-950/40 border border-red-900/40 text-red-400 px-1.5 py-0.5 rounded font-light">
-                              Hidden
-                            </span>
-                          )}
+                          {q.required && <span className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded font-light">Required</span>}
+                          {q.hidden && <span className="text-[10px] bg-red-950/40 border border-red-900/40 text-red-400 px-1.5 py-0.5 rounded font-light">Hidden</span>}
                         </div>
-                        <p className="text-[11px] text-zinc-500 font-mono font-light uppercase tracking-tight">
-                          Type: {q.type}
-                        </p>
+                        <p className="text-[11px] text-zinc-500 font-mono font-light uppercase tracking-tight">Type: {q.type}</p>
                       </div>
 
-                      {/* WORKSPACE ACTIONS CONTROLS BAR */}
                       <div className="flex items-center space-x-3 shrink-0">
-                        {/* Only render action elements if it's NOT a root core input element */}
                         {!isCore ? (
                           <>
-                            {/* Toggle Visiblity Control Switch */}
                             <button
                               type="button"
                               onClick={() => toggleQuestionHidden(q.id)}
@@ -369,14 +389,8 @@ export default function EventEventTypeEditorWorkspace() {
                                 q.hidden ? "bg-zinc-800" : "bg-white"
                               }`}
                             >
-                              <div
-                                className={`w-3 h-3 rounded-full shadow transform transition-transform duration-200 ${
-                                  q.hidden ? "translate-x-0 bg-zinc-400" : "translate-x-3 bg-black"
-                                }`}
-                              />
+                              <div className={`w-3 h-3 rounded-full shadow transform transition-transform duration-200 ${q.hidden ? "translate-x-0 bg-zinc-400" : "translate-x-3 bg-black"}`} />
                             </button>
-
-                            {/* Dustbin / Trash Delete Action Button */}
                             <button
                               type="button"
                               onClick={() => deleteQuestionField(q.id)}
@@ -384,12 +398,11 @@ export default function EventEventTypeEditorWorkspace() {
                               title="Delete Question"
                             >
                               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h.5m-.5 3h16" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1h.5m-.5 3h16" />
                               </svg>
                             </button>
                           </>
                         ) : null}
-
                         <button
                           type="button"
                           onClick={() => openEditModal(q)}
@@ -403,7 +416,6 @@ export default function EventEventTypeEditorWorkspace() {
                 })}
               </div>
 
-              {/* ADD QUESTION BUTTON INTEGRATION ROW */}
               <div className="pt-2">
                 <button
                   type="button"
@@ -427,7 +439,6 @@ export default function EventEventTypeEditorWorkspace() {
               <h3 className="text-sm font-semibold text-white">Edit booking field question</h3>
               <p className="text-xs text-zinc-500 mt-0.5 font-light">Modify configuration parameters context bindings.</p>
             </div>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-[10px] font-medium text-zinc-400 uppercase tracking-wider mb-1.5">Question Label Text</label>
@@ -438,7 +449,6 @@ export default function EventEventTypeEditorWorkspace() {
                   className="w-full bg-[#0b0b0c] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-zinc-700 transition-all"
                 />
               </div>
-
               <div>
                 <label className="block text-[10px] font-medium text-zinc-400 uppercase tracking-wider mb-1.5">Input Render Type</label>
                 <select
@@ -452,8 +462,6 @@ export default function EventEventTypeEditorWorkspace() {
                   <option value="textarea">Long Textarea Block</option>
                 </select>
               </div>
-
-              {/* Prevent editing required constraints for core inputs */}
               {editingQuestion.id !== "name" && editingQuestion.id !== "email" && (
                 <div className="flex items-center justify-between p-2 bg-[#0b0b0c] border border-zinc-800 rounded-lg">
                   <span className="text-xs font-medium text-zinc-400">Mandatory Required Input Field</span>
@@ -466,23 +474,9 @@ export default function EventEventTypeEditorWorkspace() {
                 </div>
               )}
             </div>
-
-            {/* MODAL BOTTOM CONTROLS FOOTER */}
             <div className="flex items-center justify-end space-x-2 pt-2 border-t border-zinc-800/60">
-              <button
-                type="button"
-                onClick={() => setEditingQuestion(null)}
-                className="text-xs font-medium text-zinc-400 hover:text-white px-3 py-1.5 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveQuestionEdits}
-                className="bg-white text-black font-semibold text-xs px-4 py-1.5 rounded-md hover:bg-zinc-200 transition-colors cursor-pointer"
-              >
-                Apply Changes
-              </button>
+              <button type="button" onClick={() => setEditingQuestion(null)} className="text-xs font-medium text-zinc-400 hover:text-white px-3 py-1.5 transition-colors cursor-pointer">Cancel</button>
+              <button type="button" onClick={saveQuestionEdits} className="bg-white text-black font-semibold text-xs px-4 py-1.5 rounded-md hover:bg-zinc-200 transition-colors cursor-pointer">Apply Changes</button>
             </div>
           </div>
         </div>

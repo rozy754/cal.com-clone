@@ -15,16 +15,6 @@ const MAP_DAY_TO_INT: { [key: string]: number } = {
   SATURDAY: 6,
 };
 
-const MAP_INT_TO_DAY: { [key: number]: string } = {
-  0: "SUNDAY",
-  1: "MONDAY",
-  2: "TUESDAY",
-  3: "WEDNESDAY",
-  4: "THURSDAY",
-  5: "FRIDAY",
-  6: "SATURDAY",
-};
-
 const ORDERED_DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 
 export default function AvailabilityGridEditorWorkspace() {
@@ -64,13 +54,16 @@ export default function AvailabilityGridEditorWorkspace() {
 
         // Map weekly slots arrays from schema's weekly_slots key context safely
         let databaseSlots = schedule.weekly_slots || [];
+        
         const structuredDays = ORDERED_DAYS.map((dayName) => {
           const targetInt = MAP_DAY_TO_INT[dayName];
+          // Find if there's an explicit slot saved in the database
           const matchedSlot = databaseSlots.find((slot: any) => slot.dayOfWeek === targetInt);
           
           return {
             day: dayName,
-            enabled: matchedSlot ? true : (dayName !== "SUNDAY" && dayName !== "SATURDAY"),
+            // FIX: If explicitly found in db, it is enabled. If empty db, fall back to default Mon-Fri
+            enabled: matchedSlot ? true : databaseSlots.length === 0 ? (dayName !== "SUNDAY" && dayName !== "SATURDAY") : false,
             startTime: matchedSlot ? matchedSlot.startTime : "09:00",
             endTime: matchedSlot ? matchedSlot.endTime : "17:00",
           };
@@ -122,9 +115,10 @@ export default function AvailabilityGridEditorWorkspace() {
     if (!scheduleId) return;
     setIsSaving(true);
     try {
+      // Mapping fields exactly matching what our updated transaction backend expects
       const payload = {
         name: scheduleName,
-        timeZone: timezone, // Matches strict schema name exactly
+        timeZone: timezone, 
         
         // Transform and filter only ENABLED slots mapped to structural integers
         weekly_slots: days
@@ -135,7 +129,7 @@ export default function AvailabilityGridEditorWorkspace() {
             endTime: d.endTime || "17:00",
           })),
 
-        // Transform string date stamps to ISO strings parsing checks
+        // Transform string date stamps to ISO strings parsing checks safely
         date_overrides: overrides.map((ov) => ({
           date: new Date(ov.date).toISOString(),
           isBlocked: false,
@@ -215,14 +209,14 @@ export default function AvailabilityGridEditorWorkspace() {
                       type="text"
                       value={item.startTime}
                       onChange={(e) => handleTimeChange(index, "startTime", e.target.value)}
-                      className="bg-black border border-zinc-800 rounded px-2 py-1 text-center font-mono text-xs w-16 focus:outline-none"
+                      className="bg-black border border-zinc-800 rounded px-2 py-1 text-center font-mono text-xs w-16 focus:outline-none focus:border-zinc-700 transition-all"
                     />
                     <span className="text-zinc-600 text-xs select-none">-</span>
                     <input
                       type="text"
                       value={item.endTime}
                       onChange={(e) => handleTimeChange(index, "endTime", e.target.value)}
-                      className="bg-black border border-zinc-800 rounded px-2 py-1 text-center font-mono text-xs w-16 focus:outline-none"
+                      className="bg-black border border-zinc-800 rounded px-2 py-1 text-center font-mono text-xs w-16 focus:outline-none focus:border-zinc-700 transition-all"
                     />
                   </div>
                 ) : (
@@ -267,7 +261,7 @@ export default function AvailabilityGridEditorWorkspace() {
                 <button
                   type="button"
                   onClick={() => handleRemoveOverride(ov.id)}
-                  className="p-1.5 text-zinc-500 hover:text-red-400 border border-zinc-800 rounded-md hover:bg-zinc-900 font-semibold cursor-pointer text-xs"
+                  className="p-1.5 text-zinc-500 hover:text-red-400 border border-zinc-800 rounded-md hover:bg-zinc-900 font-semibold cursor-pointer text-xs flex items-center justify-center"
                 >
                   ✕
                 </button>
