@@ -30,10 +30,10 @@ Full project is made on Next.js and database is made in Postgres Sql with Prisma
 
 
 ## Endpoints of the project
-Event Type Management - https://cal-com-clone-gold.vercel.app/dashboard/event-types
-Availability Schedule - https://cal-com-clone-gold.vercel.app/dashboard/availability
-Bookings - https://cal-com-clone-gold.vercel.app/dashboard/bookings
-Public Page Link - https://cal-com-clone-gold.vercel.app/public/rozy-koranga-forwy0
+- Event Type Management - https://cal-com-clone-gold.vercel.app/dashboard/event-types
+- Availability Schedule - https://cal-com-clone-gold.vercel.app/dashboard/availability
+- Bookings - https://cal-com-clone-gold.vercel.app/dashboard/bookings
+- Public Page Link - https://cal-com-clone-gold.vercel.app/public/rozy-koranga-forwy0
 
 
 
