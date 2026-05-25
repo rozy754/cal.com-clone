@@ -127,7 +127,7 @@ function SuccessPageUIContent() {
         {/* ✅ REMOVED: "Add to Calendar" section utility component box completely stripped down */}
 
         <p className="text-[11px] text-zinc-500 font-light select-none pt-2">
-          Need to make a change? <span className="text-zinc-400 hover:underline cursor-pointer mx-0.5">Reschedule</span> or <span className="text-zinc-400 hover:underline cursor-pointer mx-0.5">Cancel</span>
+          Need to make a change? <span className="text-zinc-400 hover:underline cursor-pointer mx-0.5">Rescheduled</span> or <span className="text-zinc-400 hover:underline cursor-pointer mx-0.5">Cancel</span>
         </p>
 
       </div>
