@@ -7,26 +7,19 @@ function BookerInformationFormCoreEngine() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // ✅ Extract parameter matrices sent directly from the Calendar Selection page
   const eventSlug = searchParams.get("event") || "";
   const username = searchParams.get("user") || "rozy-koranga-forwy0";
   const eventTypeId = searchParams.get("eventTypeId") || "";
   const startTimeISO = searchParams.get("startTime") || "";
   const endTimeISO = searchParams.get("endTime") || "";
-  const dateStr = searchParams.get("date") || "";
-  const timeStr = searchParams.get("time") || "";
+  const hostTimeZone = searchParams.get("hostTimeZone") || "America/New_York";
+  const clientTimeZone = searchParams.get("clientTimeZone") || "Asia/Kolkata";
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [eventData, setEventData] = useState<any>(null);
-  const [scheduleData, setScheduleData] = useState<any>(null);
 
-  // States to keep tracking of direct data fields
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    notes: ""
-  });
+  const [formData, setFormData] = useState({ name: "", email: "", notes: "" });
 
   useEffect(() => {
     async function loadFormSpecsLayer() {
@@ -37,17 +30,7 @@ function BookerInformationFormCoreEngine() {
           const events = await response.json();
           const extracted = Array.isArray(events) ? events : events?.data || [];
           const currentEvent = extracted.find((e: any) => e.slug === eventSlug);
-
-          if (currentEvent) {
-            setEventData(currentEvent);
-            if (currentEvent.scheduleId) {
-              const scheduleRes = await fetch(`/api/availability/${currentEvent.scheduleId}`);
-              if (scheduleRes.ok) {
-                const schedulePayload = await scheduleRes.json();
-                setScheduleData(schedulePayload?.data || schedulePayload);
-              }
-            }
-          }
+          if (currentEvent) setEventData(currentEvent);
         }
       } catch (error) {
         console.error("Failed loading configurations:", error);
@@ -58,46 +41,31 @@ function BookerInformationFormCoreEngine() {
     loadFormSpecsLayer();
   }, [eventSlug]);
 
-  const formatTimeSlotRange = () => {
-    if (!timeStr) return "";
-    const [startH, startM] = timeStr.split(":").map(Number);
-    const duration = eventData?.duration || 30;
+  // DYNAMIC COMPILER: Formats range text strictly with specific timezone label strings
+  const formatRangeSummaryString = (zone: string) => {
+    if (!startTimeISO || !endTimeISO) return "";
+    const optionsDate: Intl.DateTimeFormatOptions = { timeZone: zone, weekday: "long", month: "long", day: "numeric", year: "numeric" };
+    const optionsTime: Intl.DateTimeFormatOptions = { timeZone: zone, hour: "numeric", minute: "2-digit", hour12: true };
+    
+    const dStart = new Date(startTimeISO);
+    const dEnd = new Date(endTimeISO);
 
-    const startTotalMin = startH * 60 + startM;
-    const endTotalMin = startTotalMin + duration;
-
-    const endH = Math.floor(endTotalMin / 60);
-    const endM = endTotalMin % 60;
-
-    const getAmPm = (h: number) => (h >= 12 ? "pm" : "am");
-    const getDisplayH = (h: number) => (h % 12 === 0 ? 12 : h % 12);
-
-    return `${getDisplayH(startH)}:${startM.toString().padStart(2, "0")}${getAmPm(startH)} - ${getDisplayH(endH)}:${endM.toString().padStart(2, "0")}${getAmPm(endH)}`;
+    const dateLabel = new Intl.DateTimeFormat("en-US", optionsDate).format(dStart);
+    const timeStartLabel = new Intl.DateTimeFormat("en-US", optionsTime).format(dStart).toLowerCase();
+    const timeEndLabel = new Intl.DateTimeFormat("en-US", optionsTime).format(dEnd).toLowerCase();
+    
+    return `${dateLabel} | ${timeStartLabel} - ${timeEndLabel}`;
   };
 
-  const formatDisplayDate = () => {
-    if (!dateStr) return "";
-    const options: Intl.DateTimeFormatOptions = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
-    return new Date(dateStr).toLocaleDateString("en-US", options);
-  };
-
-  // 🔥 SUBMIT HANDLER EXECUTION ENGINE
   const handleSubmitBookingAction = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!formData.name || !formData.email) {
       alert("Name and email are strictly required fields.");
       return;
     }
 
-    if (!eventTypeId || !startTimeISO || !endTimeISO) {
-      alert("Missing background slot credentials parameters. Please choose a slot again.");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      // Direct network dispatch payload hitting your PostgreSQL database endpoints
       const response = await fetch("/api/public/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -107,34 +75,33 @@ function BookerInformationFormCoreEngine() {
           bookerEmail: formData.email,
           startTime: startTimeISO,
           endTime: endTimeISO,
-          customResponses: {
-            notes: formData.notes
-          }
+          customResponses: { notes: formData.notes }
         })
       });
 
-      const result = await response.json().catch(() => ({ success: false, error: "Empty stream mapping error." }));
+      const result = await response.json().catch(() => ({ success: false }));
 
       if (!response.ok || !result.success) {
-        alert(result.error || "Slot lock collision or internal system error.");
+        alert(result.error || "Slot collision error.");
         setIsSubmitting(false);
         return;
       }
 
-      // ✅ SUCCESS: Redirecting forward carrying query string variables directly to success engine parameters
+      // Compile exact localized range layout text to forward to Success Page UI
+      const finalClientDisplayString = formatRangeSummaryString(clientTimeZone);
+      const shortZoneLabel = clientTimeZone.split("/")[1]?.replace(/_/g, " ") || clientTimeZone;
+
       router.push(
         `/public/book-slot/success?` +
         `event=${encodeURIComponent(eventSlug)}&` +
-        `date=${dateStr}&` +
-        `time=${timeStr}&` +
         `name=${encodeURIComponent(formData.name)}&` +
         `email=${encodeURIComponent(formData.email)}&` +
-        `notes=${encodeURIComponent(formData.notes || "")}&` +
+        `notes=${encodeURIComponent(formData.notes || "na")}&` +
         `user=${username}&` +
-        `location=${encodeURIComponent(eventData?.location || "Cal Video")}`
+        `location=${encodeURIComponent(eventData?.location || "Google Meet")}&` +
+        `formattedClientWhen=${encodeURIComponent(`${finalClientDisplayString} (${shortZoneLabel})`)}`
       );
     } catch (err: any) {
-      console.error("Submission engine runtime error:", err);
       alert(`Network failure: ${err.message}`);
       setIsSubmitting(false);
     }
@@ -158,16 +125,13 @@ function BookerInformationFormCoreEngine() {
             <h2 className="text-lg font-bold text-white tracking-tight">{eventData?.title || "Meeting"}</h2>
           </div>
           <div className="space-y-3.5 pt-4 text-zinc-400 text-xs font-light">
-            <div className="flex items-start space-x-2">
-              <span className="text-sm mt-0.5">📅</span>
-              <div className="space-y-0.5">
-                <p className="text-zinc-300 font-medium">{formatDisplayDate()}</p>
-                <p className="text-zinc-400 font-mono text-[11px]">{formatTimeSlotRange()}</p>
-              </div>
+            <div className="bg-zinc-900/60 p-3 rounded-lg border border-zinc-800 space-y-1">
+              <p className="text-[10px] uppercase font-bold text-emerald-400">Your Local Range Time</p>
+              <p className="text-xs text-zinc-200 leading-normal">{formatRangeSummaryString(clientTimeZone)}</p>
             </div>
-            <div className="flex items-center space-x-2"><span>⏱️</span><span>{eventData?.duration || 30}m</span></div>
-            <div className="flex items-center space-x-2"><span>📹</span><span>{eventData?.location || "Cal Video"}</span></div>
-            <div className="flex items-center space-x-2"><span>🌐</span><span>{scheduleData?.timeZone || "Asia/Kolkata"}</span></div>
+            <div className="flex items-center space-x-2"><span>⏱️</span><span>{eventData?.duration || 30}m range</span></div>
+            <div className="flex items-center space-x-2"><span>📹</span><span>{eventData?.location || "Google Meet"}</span></div>
+            <div className="flex items-center space-x-2"><span>🌐</span><span>Host Zone: {hostTimeZone}</span></div>
           </div>
         </div>
 
@@ -178,20 +142,17 @@ function BookerInformationFormCoreEngine() {
               <label className="block text-xs font-medium text-zinc-300">Your name *</label>
               <input type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full bg-[#0b0b0c] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none" />
             </div>
-
             <div className="space-y-1.5 text-left">
               <label className="block text-xs font-medium text-zinc-300">Email address *</label>
               <input type="email" required value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full bg-[#0b0b0c] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none" />
             </div>
-
             <div className="space-y-1.5 text-left">
               <label className="block text-xs font-medium text-zinc-300">Additional notes</label>
-              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Please share anything that will help prepare for our meeting." rows={3} className="w-full bg-[#0b0b0c] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none resize-none placeholder:text-zinc-700" />
+              <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Share anything that helps prepare for our meeting." rows={3} className="w-full bg-[#0b0b0c] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none resize-none placeholder:text-zinc-700" />
             </div>
           </div>
 
           <div className="space-y-4 pt-2">
-            <p className="text-[10px] text-left text-zinc-500 font-light">By proceeding, you agree to Terms and Privacy Policy.</p>
             <div className="flex items-center justify-end space-x-2 border-t border-zinc-800/60 pt-4">
               <button type="button" onClick={() => router.back()} className="text-xs font-semibold text-zinc-400 hover:text-white px-4 py-2">Back</button>
               <button type="submit" disabled={isSubmitting} className="bg-white text-black font-semibold text-xs px-5 py-2 rounded-xl disabled:opacity-40 shadow-md">
@@ -208,7 +169,7 @@ function BookerInformationFormCoreEngine() {
 
 export default function PublicBookerInformationFormWorkspace() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#0b0b0c] flex items-center justify-center text-xs text-zinc-500 font-medium">Loading form configuration fields...</div>}>
+    <Suspense fallback={<div>Loading form configuration fields...</div>}>
       <BookerInformationFormCoreEngine />
     </Suspense>
   );
