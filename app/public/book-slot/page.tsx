@@ -334,7 +334,7 @@ function CalendarSlotPickerCoreEngine() {
             })}
             {selectedDateString && allPossibleSlots.length === 0 && (
               <div className="text-center text-xs text-zinc-600 py-12">
-                All slots are booked for this host across all events.
+                All slots are booked for this host across all eventss.
               </div>
             )}
           </div>
