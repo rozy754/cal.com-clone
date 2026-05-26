@@ -46,7 +46,6 @@ export default function AvailabilityPage() {
   const handleCreateNewSchedule = async () => {
     setIsProvisioning(true);
     try {
-      // Backend ko required defaults ke sath bhej rahe hain taaki save hone mein dikkat na ho
       const response = await availabilityApi.create({
         name: "Working hours",
         timezone: "Asia/Kolkata",
@@ -55,17 +54,14 @@ export default function AvailabilityPage() {
 
       const target = response?.data || response;
       
-      // FIX: Agar backend direct ID de deta hai
       if (target && target.id) {
         router.push(`/dashboard/availability/${target.id}`);
         router.refresh();
       } else {
-        // FALLBACK: Agar backend blank `{}` deta hai, toh data reload karo aur list mein sabse naye schedule par redirect kar do
         console.log("Backend returned empty payload, pulling fresh snapshot list layout...");
         const freshList = await loadSchedules();
         
         if (freshList && freshList.length > 0) {
-          // Sabse last added schedule ki ID nikalte hain
           const latestSchedule = freshList[freshList.length - 1];
           if (latestSchedule && latestSchedule.id) {
             router.push(`/dashboard/availability/${latestSchedule.id}`);
@@ -119,54 +115,68 @@ export default function AvailabilityPage() {
         </button>
       </div>
 
-      <div className="w-full border border-zinc-800 rounded-lg bg-[#09090b] overflow-hidden divide-y divide-zinc-800/80 shadow-xl">
-        {schedules.map((schedule) => (
-          <div key={schedule.id} className="p-4 flex items-center justify-between hover:bg-zinc-900/40 transition-all group">
-            <div className="flex items-center space-x-3.5 min-w-0 pr-4">
-              <span className="text-sm select-none">📅</span>
-              <div className="min-w-0">
-                <h3 
-                  onClick={() => router.push(`/dashboard/availability/${schedule.id}`)}
-                  className="text-sm font-medium text-white hover:underline cursor-pointer truncate"
+      {/* ✅ UI BUG FIXED: Removed overflow-hidden from list box container wrapper */}
+      <div className="w-full border border-zinc-800 rounded-lg bg-[#09090b] divide-y divide-zinc-800/80 shadow-xl">
+        {schedules.map((schedule, index) => {
+          // ✅ DYNAMIC LAYOUT DIRECTION: Last 2 schedules open up instead of down
+          const isLastItems = index >= schedules.length - 2 && schedules.length > 2;
+
+          return (
+            <div key={schedule.id} className="p-4 flex items-center justify-between hover:bg-zinc-900/40 transition-all group">
+              <div className="flex items-center space-x-3.5 min-w-0 pr-4">
+                <span className="text-sm select-none">📅</span>
+                <div className="min-w-0">
+                  <h3 
+                    onClick={() => router.push(`/dashboard/availability/${schedule.id}`)}
+                    className="text-sm font-medium text-white hover:underline cursor-pointer truncate"
+                  >
+                    {schedule.name || "Untitled Setup"}
+                  </h3>
+                  <p className="text-xs text-zinc-500 mt-0.5 truncate font-light font-mono">
+                    {schedule.timezone || "Asia/Kolkata"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative shrink-0" ref={activeMenuId === schedule.id ? menuRef : null}>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveMenuId(activeMenuId === schedule.id ? null : schedule.id);
+                  }}
+                  className="p-1.5 text-zinc-400 hover:text-white border border-zinc-800 rounded-md hover:bg-zinc-900/60 transition-colors tracking-widest cursor-pointer text-xs"
                 >
-                  {schedule.name || "Untitled Setup"}
-                </h3>
-                <p className="text-xs text-zinc-500 mt-0.5 truncate font-light font-mono">
-                  {schedule.timezone || "Asia/Kolkata"}
-                </p>
+                  •••
+                </button>
+
+                {activeMenuId === schedule.id && (
+                  /* ✅ CORE REFACTOR: Origin matrices and positioning change on borders based on isLastItems flag */
+                  <div 
+                    className={`absolute right-0 w-28 bg-[#141416] border border-zinc-800 rounded-lg shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100 ${
+                      isLastItems ? "bottom-full mb-2 origin-bottom-right" : "top-full mt-2 origin-top-right"
+                    }`}
+                  >
+                    <button 
+                      onClick={() => {
+                        router.push(`/dashboard/availability/${schedule.id}`);
+                        setActiveMenuId(null);
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-900 font-medium cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                    <button 
+                      onClick={() => schedule.id && handleDeleteSchedule(schedule.id)}
+                      className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/20 font-medium border-t border-zinc-800/60 mt-1 pt-2 cursor-pointer"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-
-            <div className="relative shrink-0" ref={activeMenuId === schedule.id ? menuRef : null}>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveMenuId(activeMenuId === schedule.id ? null : schedule.id);
-                }}
-                className="p-1.5 text-zinc-400 hover:text-white border border-zinc-800 rounded-md hover:bg-zinc-900/60 transition-colors tracking-widest cursor-pointer text-xs"
-              >
-                •••
-              </button>
-
-              {activeMenuId === schedule.id && (
-                <div className="absolute right-0 mt-2 w-28 bg-[#141416] border border-zinc-800 rounded-lg shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  <button 
-                    onClick={() => router.push(`/dashboard/availability/${schedule.id}`)}
-                    className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-900 font-medium"
-                  >
-                    Edit
-                  </button>
-                  <button 
-                    onClick={() => schedule.id && handleDeleteSchedule(schedule.id)}
-                    className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/20 font-medium"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {schedules.length === 0 && (
           <div className="p-8 text-center text-xs text-zinc-500 font-light">

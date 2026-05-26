@@ -26,7 +26,6 @@ export default function EventTypesPage() {
         const response = await fetch("/api/event-type");
         if (response.ok) {
           const result = await response.json();
-          // API returns { success: true, data: eventTypes }
           setEvents(result.data || []);
         }
       } catch (error) {
@@ -40,7 +39,6 @@ export default function EventTypesPage() {
 
   // TOGGLE ISACTIVE SWITCH AND TRIGGER PATCH TO DB
   const toggleEventActive = async (id: string, currentStatus: boolean) => {
-    // Optimistic UI state update
     setEvents(events.map((ev) => (ev.id === id ? { ...ev, isActive: !ev.isActive } : ev)));
 
     try {
@@ -62,7 +60,6 @@ export default function EventTypesPage() {
       });
 
       if (response.ok) {
-        // Remove from UI immediately
         setEvents(events.filter((ev) => ev.id !== id));
         setOpenMenuId(null);
       } else {
@@ -113,87 +110,97 @@ export default function EventTypesPage() {
       {isLoading ? (
         <div className="text-xs text-zinc-500 py-4">Syncing live databases feeds...</div>
       ) : (
-        <div className="w-full border border-zinc-800 rounded-lg bg-[#09090b] overflow-hidden divide-y divide-zinc-800/80 shadow-xl">
-          {filteredEvents.map((event) => (
-            <div
-              key={event.id}
-              className="p-4 flex items-center justify-between hover:bg-zinc-900/40 transition-all duration-150 group"
-            >
-              <div className="space-y-1 pr-4 min-w-0">
-                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                  <h2 
-                    onClick={() => router.push(`/dashboard/event-types/${event.id}`)}
-                    className="text-sm font-medium text-white hover:underline cursor-pointer truncate"
-                  >
-                    {event.title}
-                  </h2>
-                  <span className="text-xs text-zinc-500 font-mono truncate">
-                    /rozy-koranga-forwy0/{event.slug}
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-400 line-clamp-1 font-light">
-                  {event.description || "No description provided."}
-                </p>
-                <div className="flex items-center pt-1">
-                  <span className="inline-flex items-center text-[11px] font-medium text-zinc-400">
-                    <svg className="h-3.5 w-3.5 mr-1 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    {event.duration}m
-                  </span>
-                </div>
-              </div>
+        /* ✅ FIXED: Hataya overflow-hidden taaki menu boundary se bahar safely render ho sake */
+        <div className="w-full border border-zinc-800 rounded-lg bg-[#09090b] divide-y divide-zinc-800/80 shadow-xl">
+          {filteredEvents.map((event, index) => {
+            // ✅ DYNAMIC DIRECTION LOGIC: Agar aakhri ya second last element hai toh dropdown upar khulega
+            const isLastItems = index >= filteredEvents.length - 2 && filteredEvents.length > 2;
 
-              {/* ACTION BUTTON WRAPPER ROW */}
-              <div className="flex items-center space-x-2 shrink-0 pl-2 relative">
-                <button
-                  onClick={() => toggleEventActive(event.id, event.isActive)}
-                  className={`w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors duration-200 focus:outline-none ${
-                    event.isActive ? "bg-white" : "bg-zinc-800"
-                  }`}
-                >
-                  <div
-                    className={`w-3.5 h-3.5 rounded-full shadow-sm transform transition-transform duration-200 ${
-                      event.isActive ? "translate-x-3.5 bg-black" : "translate-x-0 bg-zinc-400"
+            return (
+              <div
+                key={event.id}
+                className="p-4 flex items-center justify-between hover:bg-zinc-900/40 transition-all duration-150 group"
+              >
+                <div className="space-y-1 pr-4 min-w-0">
+                  <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                    <h2 
+                      onClick={() => router.push(`/dashboard/event-types/${event.id}`)}
+                      className="text-sm font-medium text-white hover:underline cursor-pointer truncate"
+                    >
+                      {event.title}
+                    </h2>
+                    <span className="text-xs text-zinc-500 font-mono truncate">
+                      /rozy-koranga-forwy0/{event.slug}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400 line-clamp-1 font-light">
+                    {event.description || "No description provided."}
+                  </p>
+                  <div className="flex items-center pt-1">
+                    <span className="inline-flex items-center text-[11px] font-medium text-zinc-400">
+                      <svg className="h-3.5 w-3.5 mr-1 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {event.duration}m
+                    </span>
+                  </div>
+                </div>
+
+                {/* ACTION BUTTON WRAPPER ROW */}
+                <div className="flex items-center space-x-2 shrink-0 pl-2 relative">
+                  <button
+                    onClick={() => toggleEventActive(event.id, event.isActive)}
+                    className={`w-8 h-4.5 flex items-center rounded-full p-0.5 transition-colors duration-200 focus:outline-none ${
+                      event.isActive ? "bg-white" : "bg-zinc-800"
                     }`}
-                  />
-                </button>
-
-                {/* THREE DOTS DROPDOWN MENU */}
-                <div className="relative">
-                  <button 
-                    onClick={() => setOpenMenuId(openMenuId === event.id ? null : event.id)}
-                    className="p-1.5 text-zinc-400 hover:text-white border border-zinc-800 rounded-md hover:bg-zinc-900 transition-colors"
                   >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
-                    </svg>
+                    <div
+                      className={`w-3.5 h-3.5 rounded-full shadow-sm transform transition-transform duration-200 ${
+                        event.isActive ? "translate-x-3.5 bg-black" : "translate-x-0 bg-zinc-400"
+                      }`}
+                    />
                   </button>
 
-                  {/* DROPDOWN MENU CONTENT */}
-                  {openMenuId === event.id && (
-                    <div className="absolute right-0 mt-1 w-32 bg-[#1a1a1e] border border-zinc-800 rounded-md shadow-lg z-50">
-                      <button
-                        onClick={() => {
-                          router.push(`/dashboard/event-types/${event.id}`);
-                          setOpenMenuId(null);
-                        }}
-                        className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors rounded-t-md"
+                  {/* THREE DOTS DROPDOWN MENU */}
+                  <div className="relative">
+                    <button 
+                      onClick={() => setOpenMenuId(openMenuId === event.id ? null : event.id)}
+                      className="p-1.5 text-zinc-400 hover:text-white border border-zinc-800 rounded-md hover:bg-zinc-900 transition-colors cursor-pointer"
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+                      </svg>
+                    </button>
+
+                    {/* DROPDOWN MENU CONTENT */}
+                    {openMenuId === event.id && (
+                      <div 
+                        className={`absolute right-0 w-32 bg-[#1a1a1e] border border-zinc-800 rounded-md shadow-xl z-50 animate-in fade-in zoom-in-95 duration-100 ${
+                          isLastItems ? "bottom-full mb-1 origin-bottom-right" : "top-full mt-1 origin-top-right"
+                        }`}
                       >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteEvent(event.id)}
-                        className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-colors rounded-b-md border-t border-zinc-800"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
+                        <button
+                          onClick={() => {
+                            router.push(`/dashboard/event-types/${event.id}`);
+                            setOpenMenuId(null);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors rounded-t-md cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEvent(event.id)}
+                          className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-900/20 hover:text-red-300 transition-colors rounded-b-md border-t border-zinc-800 cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {filteredEvents.length === 0 && (
             <div className="p-8 text-center text-xs text-zinc-500">
